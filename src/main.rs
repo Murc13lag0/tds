@@ -2,7 +2,8 @@ use chrono::{DateTime, Utc};
 use dotenv::dotenv;
 use std::env;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenv().ok();
 
     let args: Vec<String> = env::args().collect();
@@ -15,31 +16,35 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let to = &args[2];
     let api_key = env::var("ORS_API_KEY")?;
 
-    let transport_dur = transfer_duration_rail(from, to)?;
-    let drive_dur = car_duration(from, to, &api_key)?;
+    let (transport_dur, drive_dur) = tokio::join!(
+        transfer_duration_rail(from, to),
+        car_duration(from, to, &api_key)
+    );
 
-    println!("Estimated optimal travel time by train: {transport_dur}\n");
-    println!("Estimated travel time by vehicle: {drive_dur}");
+    match transport_dur {
+        Ok(val) => println!("Optimal travel time by train: {val}\n"),
+        Err(e) => eprintln!("Train travel error: {e}\n"),
+    };
+
+    match drive_dur {
+        Ok(val) => println!("Estimated travel time by vehicle: {val}"),
+        Err(e) => eprintln!("Car travel error: {e}"),
+    };
+
     Ok(())
 }
 
-fn car_duration(from: &str, to: &str, api_key: &str) -> Result<String, Box<dyn std::error::Error>> {
-    let client = reqwest::blocking::Client::new();
+async fn car_duration(
+    from: &str,
+    to: &str,
+    api_key: &str,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let client = reqwest::Client::new();
 
     // geocode addresses
-    let geo = |place: &str| -> Result<(f64, f64), Box<dyn std::error::Error>> {
-        let url = "https://api.openrouteservice.org/geocode/search";
-        let res: serde_json::Value = client
-            .get(url)
-            .query(&[("api_key", api_key), ("text", place)])
-            .send()?
-            .json()?;
-        let coord = &res["features"][0]["geometry"]["coordinates"];
-        Ok((coord[0].as_f64().unwrap(), coord[1].as_f64().unwrap()))
-    };
 
-    let from_coord = geo(from)?;
-    let to_coord = geo(to)?;
+    let from_coord = geo(&client, from, api_key).await?;
+    let to_coord = geo(&client, to, api_key).await?;
 
     // get driving duration
     let url = "https://api.openrouteservice.org/v2/directions/driving-car";
@@ -51,21 +56,32 @@ fn car_duration(from: &str, to: &str, api_key: &str) -> Result<String, Box<dyn s
         .post(url)
         .header("Authorization", api_key)
         .json(&body)
-        .send()?
-        .json()?;
+        .send()
+        .await?
+        .json()
+        .await?;
 
-    let seconds = res["routes"][0]["summary"]["duration"].as_f64().unwrap();
+    let seconds = match res["routes"][0]["summary"]["duration"].as_f64() {
+        Some(v) => v,
+        None => return Err("Missing or invalid duration".into()),
+    };
+
     let minutes = (seconds / 60.0).round();
 
     Ok(format!("{minutes} min"))
 }
 
-fn transfer_duration_rail(from: &str, to: &str) -> Result<String, Box<dyn std::error::Error>> {
-    let v: serde_json::Value = reqwest::blocking::Client::new()
+async fn transfer_duration_rail(
+    from: &str,
+    to: &str,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let v: serde_json::Value = reqwest::Client::new()
         .get("https://transport.opendata.ch/v1/connections")
         .query(&[("from", from), ("to", to), ("limit", "5")])
-        .send()?
-        .json()?;
+        .send()
+        .await?
+        .json()
+        .await?;
 
     let now = Utc::now().naive_utc();
 
@@ -121,12 +137,12 @@ fn transfer_duration_rail(from: &str, to: &str) -> Result<String, Box<dyn std::e
         if section["journey"].is_null() {
             out.push(format!("{dep_time}-{arr_time} | walk → {to}"));
         } else {
-            let category = section["journey"]["category"].as_str().unwrap_or("");
-            let number = section["journey"]["number"].as_str().unwrap_or("");
+            let category = section["journey"]["category"].as_str().unwrap_or_default();
+            let number = section["journey"]["number"].as_str().unwrap_or_default();
             let line = format!("{category} {number}").trim().to_string();
             let platform = section["departure"]["platform"].as_str().unwrap_or("-");
             out.push(format!(
-                "{dep_time}-{arr_time} | {line} → {to} from {from} (Platform {platform})"
+                "{dep_time}-{arr_time} | Line: {line} | via [{from}] → [{to}] | Platform: {platform}"
             ));
         }
     }
@@ -144,4 +160,22 @@ fn parse_duration_to_minutes(s: &str) -> Option<u32> {
     let minutes: u32 = parts[1].parse().ok()?;
 
     Some(hours * 60 + minutes)
+}
+
+async fn geo(
+    client: &reqwest::Client,
+    place: &str,
+    api_key: &str,
+) -> Result<(f64, f64), Box<dyn std::error::Error>> {
+    let url = "https://api.openrouteservice.org/geocode/search";
+    let res: serde_json::Value = client
+        .get(url)
+        .query(&[("api_key", api_key), ("text", place)])
+        .send()
+        .await?
+        .json()
+        .await?;
+
+    let coord = &res["features"][0]["geometry"]["coordinates"];
+    Ok((coord[0].as_f64().unwrap(), coord[1].as_f64().unwrap()))
 }
