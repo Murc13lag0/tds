@@ -2,6 +2,11 @@
 
 **TDS** is a command-line tool to compare travel durations between two locations in Switzerland, using both public transport and car routes. It leverages live data from [transport.opendata.ch](https://transport.opendata.ch) and [OpenRouteService](https://openrouteservice.org).
 
+## Why use TDS?
+
+When you need to make fast, informed decisions about how to get from point A to point B, most apps force you to sift through results and compare transport modes manually.  
+**TDS gives you immediate, insight in your terminal**: the fastest public transport route (with transfers and breakdown) side-by-side with the car duration.
+
 ## Features
 
 - Compares public transport vs car travel durations
