@@ -1,4 +1,4 @@
-# TDS – Transport Duration Swiss
+# TDS – Transport Duration Switzeraland
 
 **TDS** is a command-line tool to compare travel durations between two locations in Switzerland, using both public transport and car routes. It leverages live data from [transport.opendata.ch](https://transport.opendata.ch) and [OpenRouteService](https://openrouteservice.org).
 
