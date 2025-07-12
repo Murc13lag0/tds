@@ -5,7 +5,7 @@
 ## Why use TDS?
 
 When you need to make fast, informed decisions about how to get from point A to point B, most apps force you to sift through results and compare transport modes manually.  
-**TDS gives you immediate, insight in your terminal**: the fastest public transport route (with transfers and breakdown) side-by-side with the car duration.
+TDS gives you instant, terminal-based insight: the fastest public transport route—transfers and breakdown included—side-by-side with real-time road duration.
 
 ## Features
 
